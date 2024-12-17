@@ -6,15 +6,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.28.1",
-    "mcp>=1.1.2",
+    "mcp>=1.1.1",
 ]
 
 [build-system]
 requires = [ "hatchling",]
 build-backend = "hatchling.build"
 
-[tool.uv.workspace]
-members = ["mcp-client"]
-
 [project.scripts]
 weather = "weather:main"
+
