@@ -1,5 +1,6 @@
 import asyncio
 import argparse
+import os
 from dataclasses import dataclass
 from typing import Optional
 from contextlib import AsyncExitStack
@@ -42,7 +43,7 @@ class MCPClient:
             server_params = StdioServerParameters(
                 command=toolCommand.command,
                 args=toolCommand.args,
-                env=None,
+                env=dict(os.environ),
             )
             
             # Create a new exit stack for each server
