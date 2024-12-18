@@ -143,7 +143,7 @@ async def main():
         "--tool",
         help="MCP tool description, ex. \"uvx mcp-server-time --local-timezone America/Los_Angeles\"",
         type=str,
-        nargs="+",
+        action="append",
     )
     args = parser.parse_args()
 
