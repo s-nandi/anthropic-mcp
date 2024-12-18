@@ -24,37 +24,57 @@ def parse_tool_command(flag: str) -> ToolCommand:
 class MCPClient:
     def __init__(self):
         # Initialize session and client objects
-        self.session: Optional[ClientSession] = None
+        self.sessions = {}  # Map of command -> ClientSession
+        self.tool_to_server = {}  # Map of tool name to server command
         self.exit_stack = AsyncExitStack()
         self.anthropic = Anthropic()
 
     async def connect_to_servers(self, toolCommands: list[ToolCommand]):
-        """Connect to an MCP server
+        """Connect to multiple MCP servers
         
         Args:
             toolCommands: List of ToolCommand objects
         """
-
-        toolCommand = toolCommands[0]
-        server_params = StdioServerParameters(
-            command=toolCommand.command,
-            args=toolCommand.args,
-            env=None,
-        )
-        
-        stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
-        self.stdio, self.write = stdio_transport
-        self.session = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
-        
-        await self.session.initialize()
-        
-        # List available tools
-        response = await self.session.list_tools()
-        tools = response.tools
-        print("\nConnected to server with tools:", [tool.name for tool in tools])
+        print(toolCommands)
+        # Process commands in order but store them in reverse
+        # This ensures the first server stays active
+        for toolCommand in toolCommands:
+            server_params = StdioServerParameters(
+                command=toolCommand.command,
+                args=toolCommand.args,
+                env=None,
+            )
+            
+            # Create a new exit stack for each server
+            stack = await self.exit_stack.enter_async_context(AsyncExitStack())
+            stdio_transport = await stack.enter_async_context(stdio_client(server_params))
+            stdio, write = stdio_transport
+            session = await stack.enter_async_context(ClientSession(stdio, write))
+            
+            await session.initialize()
+            
+            # Store session with its command as key
+            cmd_key = f"{toolCommand.command} {' '.join(toolCommand.args)}"
+            
+            # Store the new session first
+            new_sessions = {cmd_key: session}
+            new_sessions.update(self.sessions)
+            self.sessions = new_sessions
+            
+            # List available tools for this server
+            response = await session.list_tools()
+            tools = response.tools
+            
+            # Map tool names to server command
+            for tool in tools:
+                if tool.name in self.tool_to_server:
+                    raise ValueError(f"Duplicate tool name: {tool.name}")
+                self.tool_to_server[tool.name] = cmd_key
+            
+            print(f"\nConnected to server '{cmd_key}' with tools:", [tool.name for tool in tools])
 
     async def process_query(self, query: str) -> str:
-        """Process a query using Claude and available tools"""
+        """Process a query using Claude and available tools from all connected servers"""
         messages = [
             {
                 "role": "user",
@@ -62,12 +82,16 @@ class MCPClient:
             }
         ]
 
-        response = await self.session.list_tools()
-        available_tools = [{ 
-            "name": tool.name,
-            "description": tool.description,
-            "input_schema": tool.inputSchema
-        } for tool in response.tools]
+        # Collect tools from all connected servers
+        available_tools = []
+        for cmd, session in self.sessions.items():
+            response = await session.list_tools()
+            server_tools = [{ 
+                "name": tool.name,
+                "description": f"[Server: {cmd}] {tool.description}",
+                "input_schema": tool.inputSchema
+            } for tool in response.tools]
+            available_tools.extend(server_tools)
 
         # Initial Claude API call
         response = self.anthropic.messages.create(
@@ -88,30 +112,36 @@ class MCPClient:
                 tool_name = content.name
                 tool_args = content.input
                 
-                # Execute tool call
-                result = await self.session.call_tool(tool_name, tool_args)
-                tool_results.append({"call": tool_name, "result": result})
-                final_text.append(f"[Calling tool {tool_name} with args {tool_args}]")
+                # Get server command for this tool
+                server_cmd = self.tool_to_server.get(tool_name)
+                if server_cmd:
+                    session = self.sessions[server_cmd]
+                    
+                    # Execute tool call on the appropriate server
+                    result = await session.call_tool(tool_name, tool_args)
+                    tool_results.append({"call": tool_name, "result": result})
+                    final_text.append(f"[Calling tool {tool_name} with args {tool_args}]")
 
-                # Continue conversation with tool results
-                if hasattr(content, 'text') and content.text:
+                    # Continue conversation with tool results
+                    if hasattr(content, 'text') and content.text:
+                        messages.append({
+                          "role": "assistant",
+                          "content": content.text
+                        })
+
                     messages.append({
-                      "role": "assistant",
-                      "content": content.text
+                        "role": "user", 
+                        "content": result.content
                     })
-                messages.append({
-                    "role": "user", 
-                    "content": result.content
-                })
 
-                # Get next response from Claude
-                response = self.anthropic.messages.create(
-                    model="claude-3-5-sonnet-20241022",
-                    max_tokens=1000,
-                    messages=messages,
-                )
+                    # Get next response from Claude
+                    response = self.anthropic.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=1000,
+                        messages=messages,
+                    )
 
-                final_text.append(response.content[0].text)
+                    final_text.append(response.content[0].text)
 
         return "\n".join(final_text)
 
