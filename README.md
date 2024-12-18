@@ -13,3 +13,9 @@ Run:
 python mcp-client/client.py \
     --tool "uvx mcp-server-time --local-timezone America/Los_Angeles"
 ```
+
+Or
+```
+python mcp-client/client.py \
+    --tool "uv run weather/src/weather/server.py"
+```
