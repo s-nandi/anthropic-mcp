@@ -22,6 +22,11 @@ def parse_tool_command(flag: str) -> ToolCommand:
     parts = flag.split(" ")
     return ToolCommand(parts[0], parts[1:])
 
+@dataclass
+class QueryResponse:
+    text: str
+    messages: list[str]
+
 class MCPClient:
     def __init__(self):
         # Initialize session and client objects
@@ -74,8 +79,10 @@ class MCPClient:
             
             print(f"\nConnected to server '{cmd_key}' with tools:", [tool.name for tool in tools])
 
-    async def process_query(self, query: str) -> str:
+    async def process_query(self, query: str, previous_messages = None) -> QueryResponse:
         """Process a query using Claude and available tools from all connected servers"""
+        if previous_messages is None:
+            previous_messages = []
         messages = [
             {
                 "role": "user",
@@ -98,7 +105,7 @@ class MCPClient:
         response = self.anthropic.messages.create(
             model="claude-3-5-sonnet-20241022",
             max_tokens=1000,
-            messages=messages,
+            messages=previous_messages+messages,
             tools=available_tools
         )
 
@@ -139,18 +146,27 @@ class MCPClient:
                     response = self.anthropic.messages.create(
                         model="claude-3-5-sonnet-20241022",
                         max_tokens=1000,
-                        messages=messages,
+                        messages=previous_messages+messages,
                     )
 
                     final_text.append(response.content[0].text)
 
-        return "\n".join(final_text)
+        final_content = "\n".join(final_text)
+        messages.append({
+            "role": "assistant",
+            "content": final_content,
+        })
+        return QueryResponse(
+            text=final_content,
+            messages=messages,
+        )
 
     async def chat_loop(self):
         """Run an interactive chat loop"""
         print("\nMCP Client Started!")
         print("Type your queries or 'quit' to exit.")
         
+        conversation = []
         while True:
             try:
                 query = input("\nQuery: ").strip()
@@ -158,8 +174,9 @@ class MCPClient:
                 if query.lower() == 'quit':
                     break
                     
-                response = await self.process_query(query)
-                print("\n" + response)
+                response = await self.process_query(query, previous_messages=conversation)
+                print("\n" + response.text)
+                conversation += response.messages
             except EOFError:
                 print("\nReceived EOF, exiting gracefully...")
                 break
