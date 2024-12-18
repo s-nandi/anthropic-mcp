@@ -1,6 +1,7 @@
 import asyncio
 import argparse
 import os
+import copy
 from dataclasses import dataclass
 from typing import Optional
 from contextlib import AsyncExitStack
@@ -12,6 +13,9 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 
 load_dotenv()  # load environment variables from .env
+
+MAX_INPUT_TOKENS = 1000
+MAX_OUTPUT_TOKENS = 1000
 
 @dataclass
 class ToolCommand:
@@ -26,6 +30,17 @@ def parse_tool_command(flag: str) -> ToolCommand:
 class QueryResponse:
     text: str
     messages: list[str]
+
+def truncated_to(messages: list[dict], max_tokens: int) -> list[dict]:
+    truncated_messages = []
+    total_length = 0
+    for msg in reversed(messages):
+        new_length = total_length + len(msg["content"])
+        if new_length > max_tokens:
+            break
+        total_length = new_length
+        truncated_messages.append(msg)
+    return list(reversed(truncated_messages))
 
 class MCPClient:
     def __init__(self):
@@ -83,13 +98,14 @@ class MCPClient:
         """Process a query using Claude and available tools from all connected servers"""
         if previous_messages is None:
             previous_messages = []
+        previous_messages = truncated_to(previous_messages, MAX_INPUT_TOKENS)
+
         messages = [
             {
                 "role": "user",
                 "content": query
             }
         ]
-
         # Collect tools from all connected servers
         available_tools = []
         for cmd, session in self.sessions.items():
@@ -104,7 +120,7 @@ class MCPClient:
         # Initial Claude API call
         response = self.anthropic.messages.create(
             model="claude-3-5-sonnet-20241022",
-            max_tokens=1000,
+            max_tokens=MAX_OUTPUT_TOKENS,
             messages=previous_messages+messages,
             tools=available_tools
         )
@@ -145,7 +161,7 @@ class MCPClient:
                     # Get next response from Claude
                     response = self.anthropic.messages.create(
                         model="claude-3-5-sonnet-20241022",
-                        max_tokens=1000,
+                        max_tokens=MAX_OUTPUT_TOKENS,
                         messages=previous_messages+messages,
                     )
 
