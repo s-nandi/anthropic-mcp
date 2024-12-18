@@ -10,5 +10,6 @@ export $(cat .env | xargs)
 
 Run:
 ```
-python mcp-client/client.py weather-server-python/src/weather/server.py
+python mcp-client/client.py \
+    --tool "uvx mcp-server-time --local-timezone America/Los_Angeles"
 ```

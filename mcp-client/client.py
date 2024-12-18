@@ -1,4 +1,6 @@
 import asyncio
+import argparse
+from dataclasses import dataclass
 from typing import Optional
 from contextlib import AsyncExitStack
 
@@ -10,6 +12,15 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load environment variables from .env
 
+@dataclass
+class ToolCommand:
+    command: str
+    args: list[str]
+
+def parse_tool_command(flag: str) -> ToolCommand:
+    parts = flag.split(" ")
+    return ToolCommand(parts[0], parts[1:])
+
 class MCPClient:
     def __init__(self):
         # Initialize session and client objects
@@ -17,22 +28,18 @@ class MCPClient:
         self.exit_stack = AsyncExitStack()
         self.anthropic = Anthropic()
 
-    async def connect_to_server(self, server_script_path: str):
+    async def connect_to_servers(self, toolCommands: list[ToolCommand]):
         """Connect to an MCP server
         
         Args:
-            server_script_path: Path to the server script (.py or .js)
+            toolCommands: List of ToolCommand objects
         """
-        is_python = server_script_path.endswith('.py')
-        is_js = server_script_path.endswith('.js')
-        if not (is_python or is_js):
-            raise ValueError("Server script must be a .py or .js file")
-            
-        command = "python" if is_python else "node"
+
+        toolCommand = toolCommands[0]
         server_params = StdioServerParameters(
-            command=command,
-            args=[server_script_path],
-            env=None
+            command=toolCommand.command,
+            args=toolCommand.args,
+            env=None,
         )
         
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
@@ -131,13 +138,23 @@ class MCPClient:
         await self.exit_stack.aclose()
 
 async def main():
-    if len(sys.argv) < 2:
-        print("Usage: python client.py <path_to_server_script>")
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--tool",
+        help="MCP tool description, ex. \"uvx mcp-server-time --local-timezone America/Los_Angeles\"",
+        type=str,
+        nargs="+",
+    )
+    args = parser.parse_args()
+
+    tools = args.tool
+    if tools is None:
+        tools = []
+    tool_commands = [parse_tool_command(tool) for tool in tools]
         
     client = MCPClient()
     try:
-        await client.connect_to_server(sys.argv[1])
+        await client.connect_to_servers(tool_commands)
         await client.chat_loop()
     finally:
         await client.cleanup()
