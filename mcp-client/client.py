@@ -160,7 +160,9 @@ class MCPClient:
                     
                 response = await self.process_query(query)
                 print("\n" + response)
-                    
+            except EOFError:
+                print("\nReceived EOF, exiting gracefully...")
+                break
             except Exception as e:
                 print(f"\nError: {str(e)}")
     

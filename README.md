@@ -28,5 +28,34 @@ For a full client with every tool, run:
 python mcp-client/client.py \
     --tool "uv run weather/src/weather/server.py" \
     --tool "uvx mcp-server-time --local-timezone America/Los_Angeles" \
-    --tool "npx -y @modelcontextprotocol/server-brave-search"
+    --tool "npx -y @modelcontextprotocol/server-brave-search" \
+    --tool "npx -y @modelcontextprotocol/server-memory" \
+    --tool "npx -y @modelcontextprotocol/server-filesystem $(realpath ./llm_scratch)"
+```
+
+To stdin from a separate terminal, you can first create a named pipe:
+```
+mkfifo mcp-pipe
+```
+
+Then run the following from one terminal:
+```
+cat mcp-pipe | python mcp-client/client.py \
+    --tool "uv run weather/src/weather/server.py" \
+    --tool "uvx mcp-server-time --local-timezone America/Los_Angeles" \
+    --tool "npx -y @modelcontextprotocol/server-brave-search" \
+    --tool "npx -y @modelcontextprotocol/server-memory" \
+    --tool "npx -y @modelcontextprotocol/server-filesystem $(realpath ./llm_scratch)"
+```
+
+And send commands from another terminal:
+```
+cat > mcp-pipe
+What tools do you have access to?
+```
+You can continue typing in this terminal, and the client will respond.
+
+To clean up the pipe:
+```
+rm mcp-pipe
 ```
