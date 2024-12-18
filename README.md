@@ -54,6 +54,7 @@ cat > mcp-pipe
 What tools do you have access to?
 ```
 You can continue typing in this terminal, and the client will respond.
+Closing this second terminal will automatically clean up both processes.
 
 To clean up the pipe:
 ```

@@ -169,13 +169,17 @@ class MCPClient:
         conversation = []
         while True:
             try:
-                query = input("\nQuery: ").strip()
+                query = input("> ").strip()
                 
+                # Echo the input if it's coming from a pipe/file rather than terminal
+                if not sys.stdin.isatty():
+                    print(f"{query}")
+
                 if query.lower() == 'quit':
                     break
                     
                 response = await self.process_query(query, previous_messages=conversation)
-                print("\n" + response.text)
+                print("\n< " + response.text)
                 conversation += response.messages
             except EOFError:
                 print("\nReceived EOF, exiting gracefully...")
